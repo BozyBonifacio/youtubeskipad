@@ -61,6 +61,11 @@ function fixture(options = {}) {
   valid.closedListener(15);
   assert.equal((await valid.request({type:'YTA_SKIP_CLICK',x:200,y:250},sender).promise).ok,true,'tab cleanup clears throttle state');
 
+  // Regression: below 100% page zoom, CSS-pixel coordinates exceed tab.width/height.
+  const zoomedOut = fixture();
+  const wide = await zoomedOut.request({type:'YTA_SKIP_CLICK',x:1300,y:950},sender).promise;
+  assert.equal(wide.ok,true,'point past tab.width/height still clicked');
+
   const conflict = fixture({attachFail:true});
   const failed = await conflict.request({type:'YTA_SKIP_CLICK',x:200,y:250},sender).promise;
   assert.equal(failed.ok,false);
@@ -74,5 +79,5 @@ function fixture(options = {}) {
   assert.equal(error.code,'input-failed');
   assert.ok(inputError.calls.some(c=>c[0]==='detach'), 'detach on send failure');
 
-  console.log('PASS: background service worker browser click, security checks, throttling, close cleanup, debugger conflict, detach-on-failure');
+  console.log('PASS: background service worker browser click, security checks, zoomed-out coordinates, throttling, close cleanup, debugger conflict, detach-on-failure');
 })().catch(error => {console.error(error); process.exitCode=1;});

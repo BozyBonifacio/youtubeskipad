@@ -49,11 +49,16 @@
   // `ad-showing` class: YouTube does not apply it consistently to every layout.
   function visible(element) {
     if (!element || !element.isConnected) return false;
+    // `visibility` and `pointer-events` are inherited, but a descendant can override
+    // them (e.g. a full-player ad overlay with pointer-events:none whose Skip button
+    // re-enables them), so only the button's own computed value counts.
+    // clickablePoint() then confirms with elementFromPoint() that it receives clicks.
+    const own = getComputedStyle(element);
+    if (own.visibility === 'hidden' || own.pointerEvents === 'none') return false;
     for (let node = element; node && node.nodeType === 1; node = node.parentElement) {
       if (node.disabled || node.hidden || node.getAttribute('aria-disabled') === 'true') return false;
       const css = getComputedStyle(node);
-      if (css.display === 'none' || css.visibility === 'hidden' ||
-          css.pointerEvents === 'none' || Number(css.opacity) === 0) return false;
+      if (css.display === 'none' || Number(css.opacity) === 0) return false;
     }
     const rect = element.getBoundingClientRect();
     return rect.width > 0 && rect.height > 0;

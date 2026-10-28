@@ -58,11 +58,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
+  // Don't bound by tab.width/height: those are screen pixels, while x/y are CSS pixels
+  // from getBoundingClientRect(). Below 100% page zoom a right-edge Skip button lies
+  // past tab.width and would be wrongly rejected.
   const {x, y} = message;
   if (!Number.isFinite(x) || !Number.isFinite(y) ||
-      x < 0 || y < 0 || x > 10000 || y > 10000 ||
-      (Number.isFinite(tab.width) && x > tab.width) ||
-      (Number.isFinite(tab.height) && y > tab.height)) {
+      x < 0 || y < 0 || x > 10000 || y > 10000) {
     sendResponse({ok: false, code: 'invalid-coordinates', detail: 'Rejected out-of-bounds click.'});
     return false;
   }

@@ -22,8 +22,15 @@ function fixture(options = {}) {
   let label = options.label || 'Überspringen';
   let timerFns = [];
   const root = { dataset: {} };
+  // Full-player ad overlay that contains the Skip button, like YouTube's ad layout.
+  const overlay = {
+    nodeType: 1, parentElement: null, hidden: false, disabled: false,
+    getAttribute: () => null,
+    style: options.overlayStyle
+  };
   const button = {
-    isConnected: true, nodeType: 1, parentElement: null, hidden: false,
+    isConnected: true, nodeType: 1, parentElement: overlay, hidden: false,
+    style: options.buttonStyle,
     get disabled() {return disabled;},
     getAttribute: (name) => name === 'aria-label' ? label : null,
     textContent: label,
@@ -49,7 +56,7 @@ function fixture(options = {}) {
       elementFromPoint: () => covered ? {other: 'overlay'} : button
     },
     window: {innerWidth: 1200, innerHeight: 800, addEventListener() {}},
-    getComputedStyle: () => ({display: 'block', visibility: 'visible', pointerEvents: 'auto', opacity: '1'}),
+    getComputedStyle: node => ({display: 'block', visibility: 'visible', pointerEvents: 'auto', opacity: '1', ...node.style}),
     chrome: {
       storage: {
         local: {get: (_defaults, cb) => cb({enabled})},
@@ -122,6 +129,19 @@ assert.equal(coveredButton.clicks, 0, 'covered Skip button never clicked into ot
 coveredButton.setCovered(false);
 assert.equal(coveredButton.clicks, 1, 'uncovered button clicked');
 
+// Regression: an overlay ancestor with pointer-events:none / visibility:hidden must not
+// hide a Skip button that re-enables them on itself.
+const passThroughOverlay = fixture({overlayStyle:{pointerEvents:'none'}});
+assert.equal(passThroughOverlay.clicks, 1, 'button inside pointer-events:none overlay clicked');
+const hiddenOverlay = fixture({overlayStyle:{visibility:'hidden'}});
+assert.equal(hiddenOverlay.clicks, 1, 'visible button inside visibility:hidden overlay clicked');
+const transparentOverlay = fixture({overlayStyle:{opacity:'0'}});
+assert.equal(transparentOverlay.clicks, 0, 'button inside opacity:0 overlay never clicked');
+const inertButton = fixture({buttonStyle:{pointerEvents:'none'}});
+assert.equal(inertButton.clicks, 0, 'button with its own pointer-events:none never clicked');
+const hiddenButton = fixture({buttonStyle:{visibility:'hidden'}});
+assert.equal(hiddenButton.clicks, 0, 'button with its own visibility:hidden never clicked');
+
 const disabledExtension = fixture({enabled:false});
 assert.equal(disabledExtension.clicks, 0, 'extension initially disabled');
 disabledExtension.setEnabled(true);
@@ -142,4 +162,4 @@ const noPlayer = fixture({playerExists:false});
 assert.equal(noPlayer.clicks, 0, 'missing player never clicked');
 assert.equal(noPlayer.root.dataset.youtubeAutoSkipStatus, 'player-not-found');
 
-console.log('PASS: content-script regression, coordinates, no ad class required, cooldown, visibility, disabled, occlusion, enabled toggle, language fallback, debugger failure, missing player');
+console.log('PASS: content-script regression, coordinates, no ad class required, cooldown, visibility, disabled, occlusion, overlay ancestors, enabled toggle, language fallback, debugger failure, missing player');
