@@ -1,0 +1,17 @@
+const toggle = document.getElementById('enabled');
+const status = document.getElementById('status');
+
+function updateStatus(enabled) {
+  status.textContent = enabled ? 'Auto-skip is enabled' : 'Auto-skip is disabled';
+}
+
+chrome.storage.local.get({ enabled: true }, result => {
+  toggle.checked = result.enabled !== false;
+  updateStatus(toggle.checked);
+});
+
+toggle.addEventListener('change', () => {
+  chrome.storage.local.set({ enabled: toggle.checked }, () => {
+    updateStatus(toggle.checked);
+  });
+});

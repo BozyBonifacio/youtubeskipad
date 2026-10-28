@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>YouTube Auto-Skip</title>
+  <style>
+    body { font: 14px system-ui, sans-serif; width: 250px; margin: 0; padding: 18px; background: #151515; color: #fff; }
+    h1 { font-size: 17px; margin: 0 0 8px; }
+    p { color: #bbb; line-height: 1.5; margin: 0 0 18px; }
+    .switchrow { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    input { width: 20px; height: 20px; accent-color: #ff4040; cursor: pointer; }
+    #status { margin-top: 14px; color: #aaa; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>YouTube Auto-Skip</h1>
+  <p>Automatically clicks Skip Ad when available on YouTube.</p>
+  <label class="switchrow" for="enabled"><strong>Enable auto-skip</strong><input id="enabled" type="checkbox"></label>
+  <div id="status" role="status"></div>
+  <script src="popup.js"></script>
+</body>
+</html>
