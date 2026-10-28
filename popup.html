@@ -2,22 +2,24 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>YouTube Auto-Skip</title>
   <style>
-    body { font: 14px system-ui, sans-serif; width: 250px; margin: 0; padding: 18px; background: #151515; color: #fff; }
-    h1 { font-size: 17px; margin: 0 0 8px; }
-    p { color: #bbb; line-height: 1.5; margin: 0 0 18px; }
-    .switchrow { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-    input { width: 20px; height: 20px; accent-color: #ff4040; cursor: pointer; }
-    #status { margin-top: 14px; color: #aaa; font-size: 12px; }
+    body { font: 14px system-ui, sans-serif; width: 270px; margin: 0; padding: 18px; background: #171717; color: #fff; }
+    h1 { font-size: 17px; margin: 0 0 7px; }
+    p { color: #c4c4c4; line-height: 1.5; margin: 0 0 14px; }
+    .row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    input { width: 21px; height: 21px; accent-color: #ed4245; cursor: pointer; }
+    #status { margin-top: 12px; color: #ccc; font-size: 12px; }
+    small { display: block; margin-top: 13px; color: #aaa; }
   </style>
 </head>
 <body>
-  <h1>YouTube Auto-Skip</h1>
-  <p>Automatically clicks Skip Ad when available on YouTube.</p>
-  <label class="switchrow" for="enabled"><strong>Enable auto-skip</strong><input id="enabled" type="checkbox"></label>
+  <h1>YouTube Auto-Skip <small style="display:inline">v1.0.2</small></h1>
+  <p>Automatically clicks YouTube's Skip Ad button once YouTube enables it.</p>
+  <label class="row" for="enabled"><strong>Enable auto-skip</strong><input id="enabled" type="checkbox"></label>
   <div id="status" role="status"></div>
+  <small>Works on youtube.com tabs. Refresh YouTube after installing or updating.</small>
   <script src="popup.js"></script>
 </body>
 </html>

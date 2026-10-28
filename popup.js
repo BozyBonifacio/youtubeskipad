@@ -1,3 +1,5 @@
+'use strict';
+
 const toggle = document.getElementById('enabled');
 const status = document.getElementById('status');
 
@@ -11,7 +13,6 @@ chrome.storage.local.get({ enabled: true }, result => {
 });
 
 toggle.addEventListener('change', () => {
-  chrome.storage.local.set({ enabled: toggle.checked }, () => {
-    updateStatus(toggle.checked);
-  });
+  const enabled = toggle.checked;
+  chrome.storage.local.set({ enabled }, () => updateStatus(enabled));
 });

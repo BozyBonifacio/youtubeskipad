@@ -1,13 +1,12 @@
 {
   "manifest_version": 3,
   "name": "YouTube Auto-Skip",
-  "version": "1.0.0",
-  "description": "Automatically clicks YouTube's Skip Ad button when available.",
+  "version": "1.0.2",
+  "description": "Clicks YouTube's Skip Ad button when it becomes available, including localized buttons.",
   "permissions": ["storage"],
-  "host_permissions": ["https://www.youtube.com/*"],
   "content_scripts": [
     {
-      "matches": ["https://www.youtube.com/*"],
+      "matches": ["https://www.youtube.com/*", "https://youtube.com/*"],
       "js": ["content.js"],
       "run_at": "document_idle"
     }
