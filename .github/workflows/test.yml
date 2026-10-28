@@ -1,0 +1,23 @@
+name: Validate extension
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify JavaScript syntax
+        run: |
+          node --check content.js
+          node --check background.js
+          node --check popup.js
+      - name: Run extension tests
+        run: |
+          node tests/content.test.js
+          node tests/background.test.js
+      - name: Verify Manifest V3
+        run: node -e "const m=require('./manifest.json'); if(m.manifest_version!==3 || !m.permissions.includes('debugger')) process.exit(1)"

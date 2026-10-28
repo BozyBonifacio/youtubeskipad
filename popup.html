@@ -2,24 +2,36 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>YouTube Auto-Skip</title>
   <style>
-    body { font: 14px system-ui, sans-serif; width: 270px; margin: 0; padding: 18px; background: #171717; color: #fff; }
-    h1 { font-size: 17px; margin: 0 0 7px; }
-    p { color: #c4c4c4; line-height: 1.5; margin: 0 0 14px; }
+    body { font: 14px system-ui, sans-serif; width: 300px; margin: 0; padding: 18px; background: #16171a; color: #fff; }
+    h1 { font-size: 17px; margin: 0 0 8px; }
+    p, small { color: #c4c4c4; line-height: 1.45; }
     .row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-    input { width: 21px; height: 21px; accent-color: #ed4245; cursor: pointer; }
-    #status { margin-top: 12px; color: #ccc; font-size: 12px; }
-    small { display: block; margin-top: 13px; color: #aaa; }
+    input { width: 20px; height: 20px; accent-color: #ff5555; cursor: pointer; }
+    .panel { margin-top: 14px; padding: 12px; border: 1px solid #46464f; border-radius: 9px; }
+    .title { color: #c4c4c4; font-size: 12px; margin-bottom: 6px; }
+    #status { font-weight: 600; overflow-wrap: anywhere; }
+    #details { color: #bbb; font-size: 12px; margin-top: 7px; overflow-wrap: anywhere; }
+    #stats { color: #bbb; font-size: 12px; margin-top: 10px; }
+    small { display: block; margin-top: 14px; font-size: 11px; }
   </style>
 </head>
 <body>
-  <h1>YouTube Auto-Skip <small style="display:inline">v1.0.2</small></h1>
-  <p>Automatically clicks YouTube's Skip Ad button once YouTube enables it.</p>
-  <label class="row" for="enabled"><strong>Enable auto-skip</strong><input id="enabled" type="checkbox"></label>
-  <div id="status" role="status"></div>
-  <small>Works on youtube.com tabs. Refresh YouTube after installing or updating.</small>
+  <h1>YouTube Auto-Skip <span style="font-size:12px;color:#b8b8b8">v1.1.0</span></h1>
+  <p>Clicks only when YouTube's Skip Ad button is visible and enabled.</p>
+  <label class="row" for="enabled">
+    <strong>Enable auto-skip</strong>
+    <input id="enabled" type="checkbox">
+  </label>
+  <div class="panel" role="status" aria-live="polite">
+    <div class="title">Current YouTube tab</div>
+    <div id="status">Checking...</div>
+    <div id="details"></div>
+    <div id="stats"></div>
+  </div>
+  <small>Requires temporary debugger access to send a browser-level mouse click. Close DevTools (F12) when testing, because Chrome allows only one debugger per tab.</small>
   <script src="popup.js"></script>
 </body>
 </html>

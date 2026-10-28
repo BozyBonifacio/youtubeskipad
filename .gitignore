@@ -1,5 +1,5 @@
 .DS_Store
-Thumbs.db
+node_modules/
+*.zip
 *.crx
 *.pem
-node_modules/
