@@ -4,85 +4,136 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const code = fs.readFileSync(path.join(__dirname, '..', 'content.js'), 'utf8');
-
-function setup({adShowing = true, buttonClass = 'ytp-skip-ad-button', label = 'Überspringen', disabled = false, visible = true, enabled = true, matchCss = true} = {}) {
-  let clickCount = 0;
-  let interval;
+const script = fs.readFileSync(path.join(__dirname, '..', 'content.js'), 'utf8');
+function fixture(opts = {}) {
+  let now = 10_000;
   let listener;
-  let now = 10000;
-  const html = { dataset: {} };
+  let periodic;
+  const timers = [];
+  const events = [];
+  let clicks = 0;
+  let showing = opts.showing !== false;
+  let buttonVisible = opts.visible !== false;
+  let disabled = opts.disabled === true;
+  let src = 'ad1';
+  let time = 5;
+  const duration = opts.duration === undefined ? 30 : opts.duration;
+  let seekCount = 0;
+  const video = {
+    isConnected: true,
+    get currentSrc() { return src; },
+    get currentTime() { return time; },
+    set currentTime(value) { time = value; seekCount++; },
+    duration,
+  };
+  const button = {
+    nodeType: 1, isConnected: true, parentElement: null,
+    get disabled() { return disabled; },
+    getAttribute: key => key === 'aria-label' ? 'Überspringen' : null,
+    textContent: 'Überspringen',
+    getBoundingClientRect: () => ({width: buttonVisible ? 124 : 0, height: 35}),
+    click() {
+      clicks += 1;
+      if (opts.clickWorks) showing = false;
+    },
+  };
   const player = {
-    classList: {contains: (name) => name === 'ad-showing' && adShowing},
-    querySelectorAll: (selector) => {
+    classList: {contains: name => (name === 'ad-showing' && showing)},
+    querySelector: selector => selector === 'video.html5-main-video, video' ? video : null,
+    querySelectorAll: selector => {
       if (selector === 'button, [role="button"]') return [button];
-      if (matchCss && selector === '.' + buttonClass) return [button];
+      if (opts.matchCss !== false && selector === '.ytp-skip-ad-button') return [button];
       return [];
     }
   };
-  const button = {
-    isConnected: true,
-    disabled,
-    parentElement: null,
-    getAttribute: (attribute) => attribute === 'aria-label' ? label : null,
-    innerText: label,
-    getBoundingClientRect: () => ({width: visible ? 120 : 0, height: visible ? 32 : 0}),
-    click() {clickCount += 1;}
-  };
-  const storage = {enabled};
+  const root = {dataset: {}};
   const context = {
-    console: {info: () => {}},
+    console: {info: message => events.push(message)},
     location: {hostname: 'www.youtube.com'},
-    document: {
-      documentElement: html,
-      querySelector: (selector) => selector === '#movie_player, .html5-video-player' ? player : null,
-    },
-    getComputedStyle: () => ({display:'block', visibility:'visible', pointerEvents:'auto'}),
-    chrome: {
-      storage: {
-        local: {get: (_, cb) => cb(storage)},
-        onChanged: {addListener: (cb) => {listener = cb;}}
-      }
-    },
+    document: {documentElement: root, querySelector: () => player},
+    chrome: {storage: {local: {get: (_defaults, cb) => cb({enabled: opts.enabled !== false})}, onChanged: {addListener: cb => {listener = cb;}}}},
+    getComputedStyle: () => ({display: 'block', visibility: 'visible', pointerEvents: 'auto'}),
     MutationObserver: class {observe() {}},
-    requestAnimationFrame: (cb) => cb(),
-    setInterval: (cb) => { interval = cb; },
+    requestAnimationFrame: fn => fn(),
+    setInterval: cb => {periodic = cb;},
+    setTimeout: (cb, ms) => {timers.push({time: now + ms, cb});},
+    Date: class extends Date {static now() {return now;}},
     window: {addEventListener() {}},
-    Date: class extends Date {static now() {return now;}}
   };
-  vm.runInNewContext(code, context);
+  vm.runInNewContext(script, context);
   return {
-    button,
-    html,
-    get clicks() {return clickCount;},
-    tick(ms) { now += ms; interval(); },
-    setEnabled(value) {listener({enabled: {newValue: value}}, 'local');},
-    setLabel(value) {button.innerText = value; button.getAttribute = attr => attr === 'aria-label' ? value : null;}
+    root, events,
+    get clicks() {return clicks;},
+    get seeks() {return seekCount;},
+    get videoTime() {return time;},
+    setShowing(value) {showing = value; periodic();},
+    setVisible(value) {buttonVisible = value; periodic();},
+    setDisabled(value) {disabled = value; periodic();},
+    newAd() {src = 'ad2'; time = 4; periodic();},
+    enabled(value) {listener({enabled: {newValue: value}}, 'local');},
+    advance(ms) {
+      const target = now + ms;
+      while (timers.some(timer => timer.time <= target)) {
+        timers.sort((a,b)=>a.time-b.time);
+        const timer = timers.shift();
+        now = timer.time;
+        timer.cb();
+      }
+      now = target;
+      periodic();
+    }
   };
 }
 
-const german = setup();
-assert.equal(german.clicks, 1, 'German Skip button should be clicked immediately');
-german.tick(500);
-assert.equal(german.clicks, 1, 'Click attempts are throttled');
-german.tick(600);
-assert.equal(german.clicks, 2, 'May retry after the cooldown');
-assert.equal(german.html.dataset.youtubeAutoSkipLoaded, 'true');
-assert.equal(german.html.dataset.youtubeAutoSkipClickCount, '2');
+const basic = fixture();
+assert.equal(basic.clicks, 1, 'first action is click attempt');
+assert.equal(basic.seeks, 0, 'no immediate seek');
+assert.equal(basic.root.dataset.youtubeAutoSkipVersion, '1.0.3');
+basic.advance(349);
+assert.equal(basic.seeks, 0, 'wait for trusted click');
+basic.advance(35);
+assert.equal(basic.seeks, 1, 'falls back to seek for ignored click');
+assert.ok(basic.videoTime > 29.9, 'video seeks near duration');
+assert.equal(basic.root.dataset.youtubeAutoSkipStatus, 'seek-attempted');
+basic.advance(1800);
+assert.equal(basic.seeks, 1, 'does not repeat when video is already at end');
 
-const translated = setup({buttonClass: 'unknown-button', matchCss: false});
-assert.equal(translated.clicks, 1, 'Localized label fallback should work during an ad');
-const notAnAd = setup({adShowing: false, buttonClass: 'unknown-button', matchCss: false});
-assert.equal(notAnAd.clicks, 0, 'Localized-label fallback must not click outside ads');
-const hidden = setup({visible: false});
-assert.equal(hidden.clicks, 0, 'Hidden buttons must not be clicked');
-const disabled = setup({disabled: true});
-assert.equal(disabled.clicks, 0, 'Disabled buttons must not be clicked');
-const toggled = setup({enabled: false});
-assert.equal(toggled.clicks, 0, 'Disabled extension must not click');
-toggled.setEnabled(true);
-assert.equal(toggled.clicks, 1, 'Enabling extension must trigger a check');
-toggled.setEnabled(false);
-toggled.tick(1500);
-assert.equal(toggled.clicks, 1, 'Disabling extension must prevent clicks');
-console.log('PASS: 7 content-script scenarios (selectors, German label, ad gating, visibility, disabled button, cooldown, toggle)');
+const successful = fixture({clickWorks: true});
+assert.equal(successful.clicks, 1);
+successful.advance(450);
+assert.equal(successful.seeks, 0, 'never seek when click ended the ad');
+assert.equal(successful.root.dataset.youtubeAutoSkipStatus, 'ad-ended');
+
+const notAd = fixture({showing: false});
+assert.equal(notAd.clicks, 0, 'never act on normal video');
+assert.equal(notAd.seeks, 0);
+
+const invisible = fixture({visible: false});
+assert.equal(invisible.clicks, 0, 'never act on hidden controls');
+
+const isDisabled = fixture({disabled: true});
+assert.equal(isDisabled.clicks, 0, 'never act on disabled controls');
+
+const turnedOff = fixture({enabled: false});
+assert.equal(turnedOff.clicks, 0, 'toggle controls behavior');
+turnedOff.enabled(true);
+assert.equal(turnedOff.clicks, 1, 'turning on starts detection');
+turnedOff.enabled(false);
+turnedOff.advance(500);
+assert.equal(turnedOff.seeks, 0, 'turning off prevents fallback');
+
+const unavailableDuration = fixture({duration: Infinity});
+unavailableDuration.advance(400);
+assert.equal(unavailableDuration.seeks, 0, 'cannot seek unknown duration');
+assert.equal(unavailableDuration.root.dataset.youtubeAutoSkipStatus, 'seek-unavailable');
+
+const newPod = fixture();
+newPod.advance(400);
+newPod.newAd();
+assert.equal(newPod.clicks, 2, 'new ad src resets attempt budget');
+
+const localized = fixture({matchCss: false});
+assert.equal(localized.clicks, 1, 'localized fallback finds German Skip');
+assert.equal(localized.root.dataset.youtubeAutoSkipLastSelector, 'localized-label');
+
+console.log('PASS: 9 scenarios (click, fallback, successful click, no ad, hidden, disabled, toggle, unknown duration, ad pod, localized)');

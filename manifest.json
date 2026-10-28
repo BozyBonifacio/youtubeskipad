@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "YouTube Auto-Skip",
-  "version": "1.0.2",
-  "description": "Clicks YouTube's Skip Ad button when it becomes available, including localized buttons.",
+  "version": "1.0.3",
+  "description": "Attempts to skip YouTube ads only after the Skip Ad button becomes available.",
   "permissions": ["storage"],
   "content_scripts": [
     {

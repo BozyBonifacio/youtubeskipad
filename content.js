@@ -1,131 +1,165 @@
-/* YouTube Auto-Skip v1.0.2 (Manifest V3 content script) */
+/* YouTube Auto-Skip v1.0.3: click first, seek fallback for ignored synthetic clicks */
 (() => {
   'use strict';
 
-  // Do not initialize twice if a page reuses its existing document.
-  if (document.documentElement.dataset.youtubeAutoSkipLoaded === 'true') return;
-  document.documentElement.dataset.youtubeAutoSkipLoaded = 'true';
+  const root = document.documentElement;
+  if (root.dataset.youtubeAutoSkipLoaded === 'true') return;
+  root.dataset.youtubeAutoSkipLoaded = 'true';
+  root.dataset.youtubeAutoSkipVersion = '1.0.3';
 
   const PREFIX = '[YouTube Auto-Skip]';
-  const SELECTORS = [
+  const SKIP_SELECTORS = [
     '.ytp-ad-skip-button-slot button',
     '.ytp-skip-ad-button button',
     '.ytp-ad-skip-button-container button',
-    '.ytp-skip-ad-button-modern',
+    'button.ytp-skip-ad-button',
+    'button.ytp-ad-skip-button-modern',
+    'button.ytp-ad-skip-button',
     '.ytp-skip-ad-button',
     '.ytp-ad-skip-button-modern',
     '.ytp-ad-skip-button',
-    '.ytp-ad-skip-button-slot [role="button"]',
-    '.videoAdUiSkipButton',
-    '[class*="skip-ad-button"] button',
-    'button[class*="skip-ad"]',
-    '[role="button"][class*="skip-ad"]'
+    '.videoAdUiSkipButton'
   ];
+  const LABEL = /(?:^|\b)(?:skip\s+ads?|skip\s+advertisements?|überspringen|anzeige(?:n)?\s+überspringen)(?:\b|$)/iu;
+  const FALLBACK_AFTER_MS = 350;
+  const SEEK_RETRY_MS = 1600;
+  const MAX_SEEKS_PER_AD = 2;
 
-  // Fallback for localized buttons, only while the player is showing an ad.
-  const SKIP_LABEL = /^(?:skip\s+(?:ad|ads|advertisement|advertisements)(?:\s+now)?|überspringen|anzeige(?:n)?\s+überspringen|passer\s+(?:l.annonce|les\s+annonces)|omitir\s+anuncio(?:s)?|saltar\s+anuncio(?:s)?|pular\s+anúncio(?:s)?|salta\s+annuncio|annuncio\s+salta)$/iu;
-  const ATTEMPT_COOLDOWN_MS = 1000;
-  const attemptTimes = new WeakMap();
-  let enabled = true;
+  let enabled = false;
+  let initialized = false;
   let scheduled = false;
-  let clickCount = 0;
+  let ad = null;
+  let clickAttempts = 0;
+  let seekAttempts = 0;
 
-  console.info(`${PREFIX} v1.0.2 loaded on ${location.hostname}`);
+  function log(message) { console.info(`${PREFIX} ${message}`); }
+  function state(value) { root.dataset.youtubeAutoSkipStatus = value; }
 
-  function visibleAndEnabled(el) {
-    if (!el || !el.isConnected || el.disabled || el.getAttribute('aria-disabled') === 'true') {
-      return false;
+  function isVisibleAndEnabled(element) {
+    if (!element || !element.isConnected || element.disabled ||
+        element.getAttribute('aria-disabled') === 'true') return false;
+    for (let node = element; node && node.nodeType === 1; node = node.parentElement) {
+      const css = getComputedStyle(node);
+      if (css.display === 'none' || css.visibility === 'hidden' ||
+          css.pointerEvents === 'none') return false;
+      if (node.disabled || node.getAttribute('aria-disabled') === 'true') return false;
     }
-    const computed = getComputedStyle(el);
-    if (
-      computed.display === 'none' ||
-      computed.visibility === 'hidden' ||
-      computed.pointerEvents === 'none'
-    ) return false;
-    const box = el.getBoundingClientRect();
-    if (box.width <= 0 || box.height <= 0) return false;
-
-    // YouTube occasionally leaves an invisible skip control in the DOM.
-    for (let parent = el.parentElement; parent; parent = parent.parentElement) {
-      const style = getComputedStyle(parent);
-      if (style.display === 'none' || style.visibility === 'hidden') return false;
-    }
-    return true;
+    const rect = element.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
   }
 
-  function getSkipButton(player) {
-    // Search the YouTube player only, not the rest of the page.
-    for (const selector of SELECTORS) {
-      for (const candidate of player.querySelectorAll(selector)) {
-        if (visibleAndEnabled(candidate)) return { element: candidate, selector };
+  function skipControl(player) {
+    for (const selector of SKIP_SELECTORS) {
+      for (const element of player.querySelectorAll(selector)) {
+        if (isVisibleAndEnabled(element)) return {element, selector};
       }
     }
-
-    // Some YouTube variants replace CSS classes but keep button labels.
-    if (player.classList.contains('ad-showing')) {
-      for (const candidate of player.querySelectorAll('button, [role="button"]')) {
-        const label = (
-          candidate.getAttribute('aria-label') ||
-          candidate.innerText ||
-          candidate.textContent || ''
-        ).replace(/\s+/g, ' ').trim();
-        if (SKIP_LABEL.test(label) && visibleAndEnabled(candidate)) {
-          return { element: candidate, selector: 'localized-label' };
-        }
+    for (const element of player.querySelectorAll('button, [role="button"]')) {
+      const text = (element.getAttribute('aria-label') || element.textContent || '').trim();
+      if (LABEL.test(text) && isVisibleAndEnabled(element)) {
+        return {element, selector: 'localized-label'};
       }
     }
     return null;
   }
 
-  function checkForSkipButton() {
-    if (!enabled) return;
+  function check() {
+    if (!initialized || !enabled) return;
     const player = document.querySelector('#movie_player, .html5-video-player');
     if (!player) return;
-    const found = getSkipButton(player);
-    if (!found) return;
+    const adShowing = player.classList.contains('ad-showing') ||
+                      player.classList.contains('ad-interrupting');
+    if (!adShowing) {
+      if (ad && ad.clickAt) { state('ad-ended'); log('Ad finished after skip attempt.'); }
+      ad = null;
+      return;
+    }
 
+    const video = player.querySelector('video.html5-main-video, video');
+    if (!video) return;
+    const src = video.currentSrc || video.src || '';
     const now = Date.now();
-    if (now - (attemptTimes.get(found.element) || 0) < ATTEMPT_COOLDOWN_MS) return;
-    attemptTimes.set(found.element, now);
+    // Each new ad (including the next ad in a pod) gets its own attempt budget.
+    if (!ad || ad.video !== video || ad.src !== src ||
+        (ad.lastTime > 4 && video.currentTime < 1 && ad.seekCount > 0)) {
+      ad = {video, src, clickAt: 0, seekAt: 0, seekCount: 0, lastTime: 0};
+    }
+    ad.lastTime = video.currentTime;
 
-    // DOM click triggers the same handler that normally handles this control.
-    found.element.click();
-    clickCount += 1;
-    document.documentElement.dataset.youtubeAutoSkipClickCount = String(clickCount);
-    document.documentElement.dataset.youtubeAutoSkipLastSelector = found.selector;
-    console.info(`${PREFIX} clicked Skip Ad (matched ${found.selector})`);
+    const skip = skipControl(player);
+    if (!skip) return; // Never touch an ad before YouTube enables Skip Ad.
+
+    if (!ad.clickAt) {
+      ad.clickAt = now;
+      clickAttempts += 1;
+      root.dataset.youtubeAutoSkipClickAttempts = String(clickAttempts);
+      root.dataset.youtubeAutoSkipLastSelector = skip.selector;
+      try {
+        skip.element.click();
+        state('click-attempted');
+        log(`Click attempted (${skip.selector}); checking if YouTube accepted it.`);
+      } catch (error) {
+        state('click-failed');
+        log(`Click attempt failed: ${String(error)}`);
+      }
+      setTimeout(check, FALLBACK_AFTER_MS + 30);
+      return;
+    }
+
+    if (now - ad.clickAt < FALLBACK_AFTER_MS) return;
+    if (ad.seekCount >= MAX_SEEKS_PER_AD ||
+        (ad.seekAt && now - ad.seekAt < SEEK_RETRY_MS)) return;
+
+    const duration = video.duration;
+    if (!Number.isFinite(duration) || duration <= 0 ||
+        video.currentTime >= duration - 0.15) {
+      state('seek-unavailable');
+      return;
+    }
+
+    // The click can be ignored when YouTube checks event.isTrusted.
+    // Seeking is attempted only for an ad with an already-active Skip button.
+    ad.seekCount += 1;
+    ad.seekAt = now;
+    seekAttempts += 1;
+    root.dataset.youtubeAutoSkipSeekAttempts = String(seekAttempts);
+    try {
+      video.currentTime = Math.max(video.currentTime, duration - 0.06);
+      state('seek-attempted');
+      log(`Skip click not accepted. Tried ending skippable ad video (attempt ${ad.seekCount}).`);
+    } catch (error) {
+      state('seek-failed');
+      log(`Video-end fallback failed: ${String(error)}`);
+    }
   }
 
   function scheduleCheck() {
     if (scheduled) return;
     scheduled = true;
-    requestAnimationFrame(() => {
-      scheduled = false;
-      checkForSkipButton();
-    });
+    requestAnimationFrame(() => { scheduled = false; check(); });
   }
 
-  chrome.storage.local.get({ enabled: true }, result => {
+  chrome.storage.local.get({enabled: true}, result => {
     enabled = result.enabled !== false;
+    initialized = true;
+    state(enabled ? 'ready' : 'disabled');
+    log(`v1.0.3 loaded (${enabled ? 'enabled' : 'disabled'}) on ${location.hostname}.`);
     scheduleCheck();
   });
-
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local' || !changes.enabled) return;
     enabled = changes.enabled.newValue !== false;
-    console.info(`${PREFIX} ${enabled ? 'enabled' : 'disabled'}`);
+    if (!enabled) ad = null;
+    state(enabled ? 'ready' : 'disabled');
+    log(enabled ? 'enabled' : 'disabled');
     scheduleCheck();
   });
 
   const observer = new MutationObserver(scheduleCheck);
-  observer.observe(document.documentElement, {
-    childList: true,
-    subtree: true,
-    attributes: true,
+  observer.observe(root, {
+    childList: true, subtree: true, attributes: true,
     attributeFilter: ['class', 'style', 'disabled', 'aria-label', 'aria-disabled']
   });
-
-  // This catches skip buttons that become actionable without a DOM mutation.
-  setInterval(checkForSkipButton, 350);
+  setInterval(check, 300);
   window.addEventListener('yt-navigate-finish', scheduleCheck);
 })();
